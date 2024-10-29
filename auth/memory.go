@@ -21,8 +21,6 @@ type AuthorizationCode struct {
 }
 
 func NewAuthorizationCode() *AuthorizationCode {
-	//codeBytes := generateASCII(32) // need to make these ASCII characters only
-	//pBytes := make([]byte, 20)    // need to make these ASCII characters only
 	codeBytes, codeErr := generateASCII(32)
 	pBytes, pErr := generateASCII(20)
 	if codeErr != nil {
@@ -45,9 +43,13 @@ func generateASCII(n int) (string, error) {
 		return "", err
 	}
 
+	l := len(asciiCharset)
+
 	// Map bytes to the asciiCharset
+	// modulus operation here will give a random character a true
+	// value (one of the ascii characters available)
 	for i := 0; i < n; i++ {
-		bytes[i] = asciiCharset[bytes[i]%byte(len(asciiCharset))]
+		bytes[i] = asciiCharset[bytes[i]%byte(l)]
 	}
 
 	return string(bytes), nil
