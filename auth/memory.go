@@ -11,6 +11,7 @@ import (
 
 var (
 	CodeExpiration = 5 * time.Minute
+	asciiCharset   = []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
 )
 
 type AuthorizationCode struct {
@@ -20,11 +21,10 @@ type AuthorizationCode struct {
 }
 
 func NewAuthorizationCode() *AuthorizationCode {
-
-	codeBytes := make([]byte, 32) // need to make these ASCII characters only
-	pBytes := make([]byte, 20)    // need to make these ASCII characters only
-	_, codeErr := rand.Read(codeBytes)
-	_, pErr := rand.Read(pBytes)
+	//codeBytes := generateASCII(32) // need to make these ASCII characters only
+	//pBytes := make([]byte, 20)    // need to make these ASCII characters only
+	codeBytes, codeErr := generateASCII(32)
+	pBytes, pErr := generateASCII(20)
 	if codeErr != nil {
 		log.Fatalf("failed to create authorization code %s\n", codeErr)
 	}
@@ -32,10 +32,25 @@ func NewAuthorizationCode() *AuthorizationCode {
 		log.Fatalf("failed to create pkce code %s\n", pErr)
 	}
 	return &AuthorizationCode{
-		Code: string(codeBytes),
+		Code: codeBytes,
 		Exp:  time.Now().Add(CodeExpiration),
-		Pkce: string(pBytes),
+		Pkce: pBytes,
 	}
+}
+
+// generateASCII generates a random ASCII string of the specified length.
+func generateASCII(n int) (string, error) {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+
+	// Map bytes to the asciiCharset
+	for i := 0; i < n; i++ {
+		bytes[i] = asciiCharset[bytes[i]%byte(len(asciiCharset))]
+	}
+
+	return string(bytes), nil
 }
 
 type TokenHeap []*AuthorizationCode
@@ -49,7 +64,10 @@ func (h TokenHeap) Less(i, j int) bool { return h[i].Exp.Before(h[j].Exp) }
 //goland:noinspection GoMixedReceiverTypes
 func (h TokenHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 
+//goland:noinspection GoMixedReceiverTypes
 func (h *TokenHeap) Push(x interface{}) { *h = append(*h, x.(*AuthorizationCode)) }
+
+//goland:noinspection GoMixedReceiverTypes
 func (h *TokenHeap) Pop() interface{} {
 	old := *h
 	n := len(old)

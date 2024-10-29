@@ -9,7 +9,9 @@
   "test_ac_grant": {
     "name": "test_ac_grant",
     "type": "authorization_code",
-    "description": "The second test client :)"
+    "description": "The second test client :)",
+    "client_id" : "f3bf97cd-91c0-494a-8c91-5ec6b14375d5",
+    "client_secret" : "71a0e768-0a57-4c2e-9d72-421d8bf3ca63"
   }
 }
 

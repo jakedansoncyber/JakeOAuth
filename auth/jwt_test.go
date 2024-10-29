@@ -5,15 +5,6 @@ import (
 	"testing"
 )
 
-func TestCreateJWT(t *testing.T) {
-	token, err := CreateJWT()
-
-	assert.Nilf(t, err, "failed to create JWT: %s", err)
-	assert.NotNil(t, token)
-	assert.Equal(t, "RS256", token.Method.Alg())
-
-}
-
 var rsaTestData = []struct {
 	name        string
 	tokenString string
@@ -50,6 +41,15 @@ var rsaTestData = []struct {
 		"RS256",
 		false,
 	},
+}
+
+func TestCreateJWT(t *testing.T) {
+	token, err := CreateJWT()
+
+	assert.Nilf(t, err, "failed to create JWT: %s", err)
+	assert.NotNil(t, token)
+	assert.Equal(t, "RS256", token.Method.Alg())
+
 }
 
 func TestValidateToken(t *testing.T) {
