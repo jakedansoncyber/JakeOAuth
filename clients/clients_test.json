@@ -1,0 +1,15 @@
+{
+  "test_cc_grant": {
+    "name": "test_cc_grant",
+    "type": "client_credentials",
+    "description": "The first test client :)",
+    "client_id" : "d3200efd-c8a1-4f90-a056-cf22b714a0fc",
+    "client_secret" : "ddccd2d0-2b80-4ee8-ab33-beaa5fcb89fe"
+  },
+  "test_ac_grant": {
+    "name": "test_ac_grant",
+    "type": "authorization_code",
+    "description": "The second test client :)"
+  }
+}
+
