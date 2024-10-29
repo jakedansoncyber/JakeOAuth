@@ -30,6 +30,7 @@ func TestNewAuthCodeStore(t *testing.T) {
 }
 
 func TestAuthorizationCodeStore_CheckTokenWithPkce_Valid(t *testing.T) {
+	CodeExpiration = 5 * time.Minute
 	acs := NewAuthCodeStore()
 	go acs.ListenExpiration()
 
@@ -58,6 +59,7 @@ func TestAuthorizationCodeStore_CheckTokenWithPkce_Expired(t *testing.T) {
 }
 
 func TestAuthorizationCodeStore_CheckTokenWithPkce_NotInCodeStore(t *testing.T) {
+	CodeExpiration = 5 * time.Minute
 	acs := NewAuthCodeStore()
 	go acs.ListenExpiration()
 
@@ -72,6 +74,7 @@ func TestAuthorizationCodeStore_CheckTokenWithPkce_NotInCodeStore(t *testing.T) 
 }
 
 func TestAuthorizationCodeStore_CheckTokenWithPkce_InvalidPkce(t *testing.T) {
+	CodeExpiration = 5 * time.Minute
 	acs := NewAuthCodeStore()
 	go acs.ListenExpiration()
 
