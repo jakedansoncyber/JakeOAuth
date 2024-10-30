@@ -30,6 +30,7 @@ jobs:
             -Dsonar.go.coverage.reportPaths=**/cover.out
             -Dsonar.tests=.
             -Dsonar.test.inclusions=**/*_test.go
+            -Dsonar.sources=.
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
