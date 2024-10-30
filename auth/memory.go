@@ -110,7 +110,6 @@ func (acs *AuthorizationCodeStore) startExpirationTimer() {
 		}
 
 		acs.heapMu.Lock()
-
 		nextExpiration := acs.tokenHeap[0].Exp
 		now := time.Now()
 		if nextExpiration.After(time.Now()) {
@@ -145,8 +144,8 @@ func (acs *AuthorizationCodeStore) Add(code *AuthorizationCode) {
 	acs.tokenMu.Unlock()
 }
 
-func (acs *AuthorizationCodeStore) CheckTokenWithPkce(code *AuthorizationCode) (bool, error) {
-	val, ok := acs.tokenStore[code.Code]
+func (acs *AuthorizationCodeStore) CheckTokenWithPkce(authCode, pkceCode string) (bool, error) {
+	val, ok := acs.tokenStore[authCode]
 
 	if !ok {
 		return false, errors.New("token not found in code store")
@@ -157,7 +156,7 @@ func (acs *AuthorizationCodeStore) CheckTokenWithPkce(code *AuthorizationCode) (
 		return false, errors.New("token is expired")
 	}
 
-	if val.Pkce != code.Pkce {
+	if val.Pkce != pkceCode {
 		return false, errors.New("pkce code was not the same")
 	}
 

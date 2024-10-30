@@ -1,6 +1,7 @@
 package main
 
 import (
+	"JakeOAuth/auth"
 	"JakeOAuth/handlers"
 	"bytes"
 	"io"
@@ -46,6 +47,7 @@ type PostHandler struct {
 func (ph *PostHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 	ph.Middleware.log(w, req)
 	ph.Handler(w, req)
@@ -60,6 +62,7 @@ type GetHandler struct {
 func (gh *GetHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 	gh.Middleware.log(w, req)
 	gh.Handler(w, req)
@@ -67,15 +70,22 @@ func (gh *GetHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
-	authHandler := &PostHandler{
-		Handler:    handlers.AuthorizationEndpointHandler,
+	h := handlers.NewAuthHandler(auth.NewAuthCodeStore())
+	go h.CodeStore.ListenExpiration()
+	authHandler := &GetHandler{
+		Handler:    h.AuthorizationEndpointHandler,
 		Middleware: LoggingMiddleware{},
 	}
 
-	h := JakeHandler{}
+	tokenEndpointHandler := &PostHandler{
+		Handler:    h.TokenEndpointHandler,
+		Middleware: LoggingMiddleware{},
+	}
 
+	hJ := JakeHandler{}
 	http.Handle("/authorizationendpoint", authHandler)
-	http.Handle("/home", &h)
+	http.Handle("/tokenendpoint", tokenEndpointHandler)
+	http.Handle("/home", &hJ)
 	log.Println("Started on localhost:8080")
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
 }
