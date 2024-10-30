@@ -13,12 +13,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23.2'
+      - name: Build
+        run: go build -v ./...
+      - name: Test
+        run: go test -coverprofile cover.out ./...
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v3.1.0
         with:
           args: >
             -Dsonar.organization=jakedansoncyber
             -Dsonar.projectKey=jakedansoncyber_JakeOAuth
+            -Dsonar.go.coverage.reportPaths=**/cover.out
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/*_test.go
+            -Dsonar.sources=.
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
