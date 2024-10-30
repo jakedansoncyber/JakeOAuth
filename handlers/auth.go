@@ -1,10 +1,17 @@
 package handlers
 
 import (
+	"JakeOAuth/auth"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 )
+
+type AuthEndpointResponse struct {
+	AuthCode string `json:"code"`
+	PkceCode string `json:"state"`
+}
 
 // AuthorizationEndpointHandler used by the client to obtain
 // authorization from the resource owner via user-agent redirection.
@@ -14,14 +21,18 @@ func AuthorizationEndpointHandler(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	err := req.ParseForm()
 	if err != nil {
-		log.Fatal("failed to parse form")
+		log.Println("error: AuthorizationEndpointHandler, failed to parse form")
+		log.Println(w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")))
+		log.Println(err)
+		return
 	}
 
 	formVals := req.Form
 
 	if !formVals.Has("username") || !formVals.Has("password") {
 		w.WriteHeader(http.StatusUnauthorized)
-		log.Println("please login using url encoded form username and password")
+		log.Println("unauthorized_client:The client is not authorized to request an authorization code using this method.")
+		log.Println(err)
 		return
 	}
 
@@ -29,20 +40,38 @@ func AuthorizationEndpointHandler(w http.ResponseWriter, req *http.Request) {
 	err = authenticate(formVals.Get("username"), formVals.Get("password"))
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		log.Print(err.Error())
+		log.Println(w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method.")))
+		log.Print(err)
 		return
 	}
 
 	// need to implement scopes, and state. probably no redirect uri, that seems weird
 	if !formVals.Has("response_type") && !formVals.Has("client_id") {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Print(w.Write([]byte("invalid_request=The request is missing a required parameter,includes an\ninvalid parameter value, includes a parameter more than\nonce, or is otherwise malformed.")))
+		log.Println(w.Write([]byte("invalid_request:The request is missing a required parameter,includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.")))
+		log.Println("error: response_type or client_id missing from client request")
+		return
+	}
+
+	code := auth.NewAuthorizationCode()
+
+	var resp = &AuthEndpointResponse{
+		AuthCode: code.Code,
+		PkceCode: code.Pkce,
+	}
+
+	bytes, err := json.Marshal(resp)
+
+	if err != nil {
+		log.Println("error: AuthorizationEndpointHandler, failed to parse form")
+		log.Println(w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")))
 		return
 	}
 
 	switch formVals.Get("response_type") {
 	case "code":
-		http.Redirect(w, req, "https://oauth.pstmn.io/v1/callback", http.StatusTemporaryRedirect)
+		log.Println(w.Write(bytes))
+		http.Redirect(w, req, "https://oauth.pstmn.io/v1/callback", http.StatusFound)
 		// do something for authorization code grant
 	case "token":
 		// do something for implicit grant type
