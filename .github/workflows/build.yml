@@ -28,6 +28,8 @@ jobs:
             -Dsonar.organization=jakedansoncyber
             -Dsonar.projectKey=jakedansoncyber_JakeOAuth
             -Dsonar.go.coverage.reportPaths=**/cover.out
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/*_test.go
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
