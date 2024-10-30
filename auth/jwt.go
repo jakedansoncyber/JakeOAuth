@@ -7,6 +7,8 @@ import (
 )
 
 func CreateJWT() (token *jwt.Token, err error) {
+	//TODO create JWT based off of client id
+
 	token = jwt.New(jwt.SigningMethodRS256)
 
 	b, err := os.ReadFile("../keys/private.pem")

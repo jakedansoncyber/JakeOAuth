@@ -37,7 +37,7 @@ func TestAuthorizationCodeStore_CheckTokenWithPkce_Valid(t *testing.T) {
 	ac := NewAuthorizationCode()
 	acs.Add(ac)
 
-	isValid, err := acs.CheckTokenWithPkce(ac)
+	isValid, err := acs.CheckTokenWithPkce(ac.Code, ac.Pkce)
 
 	assert.Nil(t, err)
 	assert.True(t, isValid)
@@ -52,7 +52,7 @@ func TestAuthorizationCodeStore_CheckTokenWithPkce_Expired(t *testing.T) {
 	ac := NewAuthorizationCode()
 	acs.Add(ac)
 	time.Sleep(20 * time.Microsecond)
-	isValid, err := acs.CheckTokenWithPkce(ac)
+	isValid, err := acs.CheckTokenWithPkce(ac.Code, ac.Pkce)
 
 	assert.Error(t, err)
 	assert.False(t, isValid)
@@ -65,7 +65,7 @@ func TestAuthorizationCodeStore_CheckTokenWithPkce_NotInCodeStore(t *testing.T) 
 
 	ac := NewAuthorizationCode()
 	time.Sleep(20 * time.Microsecond)
-	isValid, err := acs.CheckTokenWithPkce(ac)
+	isValid, err := acs.CheckTokenWithPkce(ac.Code, ac.Pkce)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, "token not found in code store", err.Error())
@@ -83,7 +83,7 @@ func TestAuthorizationCodeStore_CheckTokenWithPkce_InvalidPkce(t *testing.T) {
 
 	acBadCode := NewAuthorizationCode()
 	acBadCode.Code = ac.Code
-	isValid, err := acs.CheckTokenWithPkce(acBadCode)
+	isValid, err := acs.CheckTokenWithPkce(acBadCode.Code, acBadCode.Pkce)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, "pkce code was not the same", err.Error())

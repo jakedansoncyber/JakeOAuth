@@ -1,12 +1,12 @@
 {
-  "jake_cc_grant" : {
+  "d3200efd-c8a1-4f90-a056-cf22b714a0fc" : {
     "name" : "jake_cc_grant",
     "type" : "client_credentials",
     "description" : "The first client :)",
     "client_id" : "d3200efd-c8a1-4f90-a056-cf22b714a0fc",
     "client_secret" : "ddccd2d0-2b80-4ee8-ab33-beaa5fcb89fe"
   },
-  "jake_ac_grant" : {
+  "f3bf97cd-91c0-494a-8c91-5ec6b14375d5" : {
     "name" : "jake_ac_grant",
     "type" : "authorization_code",
     "description" : "The second client :)",
