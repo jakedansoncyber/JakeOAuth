@@ -6,8 +6,8 @@ import (
 )
 
 func init() {
-	PathToPrivateKey = "/keys/private.pem"
-	PathToPublicKey = "/keys/public.pub"
+	PathToPrivateKey = "../keys/private.pem"
+	PathToPublicKey = "../keys/public.pub"
 }
 
 var rsaTestData = []struct {
