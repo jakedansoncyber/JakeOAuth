@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+func init() {
+	PathToPrivateKey = "/keys/private.pem"
+	PathToPublicKey = "/keys/public.pub"
+}
+
 var rsaTestData = []struct {
 	name        string
 	tokenString string
@@ -44,6 +49,7 @@ var rsaTestData = []struct {
 }
 
 func TestCreateJWT(t *testing.T) {
+
 	token, err := CreateJWT()
 
 	assert.Nilf(t, err, "failed to create JWT: %s", err)

@@ -3,6 +3,8 @@ package auth
 import (
 	"container/heap"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"log"
 	"sync"
@@ -15,28 +17,27 @@ var (
 )
 
 type AuthorizationCode struct {
-	Code string
-	Exp  time.Time
-	Pkce string
+	Exp        int64
+	Code       string
+	Pkce       string
+	HashMethod string
+	State      string
 }
 
-func NewAuthorizationCode() *AuthorizationCode {
-	codeBytes, codeErr := generateASCII(32)
-	pBytes, pErr := generateASCII(20)
-	if codeErr != nil {
-		log.Fatalf("failed to create authorization code %s\n", codeErr)
-	}
-	if pErr != nil {
-		log.Fatalf("failed to create pkce code %s\n", pErr)
+func NewAuthorizationCode(pkceCode, hashMethod, state string) *AuthorizationCode {
+	code, err := generateASCII(42)
+	if err != nil {
+		log.Printf("NewAuthorizationCode: failed to generate code")
 	}
 	return &AuthorizationCode{
-		Code: codeBytes,
-		Exp:  time.Now().Add(CodeExpiration),
-		Pkce: pBytes,
+		Exp:        time.Now().Add(CodeExpiration).Unix(),
+		Code:       code,
+		Pkce:       pkceCode,
+		HashMethod: hashMethod,
+		State:      state,
 	}
 }
 
-// generateASCII generates a random ASCII string of the specified length.
 func generateASCII(n int) (string, error) {
 	bytes := make([]byte, n)
 	if _, err := rand.Read(bytes); err != nil {
@@ -61,7 +62,7 @@ type TokenHeap []*AuthorizationCode
 func (h TokenHeap) Len() int { return len(h) }
 
 //goland:noinspection GoMixedReceiverTypes
-func (h TokenHeap) Less(i, j int) bool { return h[i].Exp.Before(h[j].Exp) }
+func (h TokenHeap) Less(i, j int) bool { return time.Unix(h[i].Exp, 0).Before(time.Unix(h[j].Exp, 0)) }
 
 //goland:noinspection GoMixedReceiverTypes
 func (h TokenHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
@@ -112,9 +113,9 @@ func (acs *AuthorizationCodeStore) startExpirationTimer() {
 		acs.heapMu.Lock()
 		nextExpiration := acs.tokenHeap[0].Exp
 		now := time.Now()
-		if nextExpiration.After(time.Now()) {
+		if time.Unix(nextExpiration, 0).After(time.Now()) {
 			acs.heapMu.Unlock()
-			time.Sleep(nextExpiration.Sub(now))
+			time.Sleep(time.Unix(nextExpiration, 0).Sub(now))
 			continue
 		}
 
@@ -151,12 +152,22 @@ func (acs *AuthorizationCodeStore) CheckTokenWithPkce(authCode, pkceCode string)
 		return false, errors.New("token not found in code store")
 	}
 
-	if val.Exp.Before(time.Now()) {
+	if time.Unix(val.Exp, 0).Before(time.Now()) {
 		// should never get here because the token gets removed as soon as it is expired...
 		return false, errors.New("token is expired")
 	}
 
-	if val.Pkce != pkceCode {
+	if val.HashMethod != "S256" {
+		if val.Pkce != pkceCode && val.Pkce != "" {
+			return false, errors.New("pkce code was not the same")
+		}
+		return true, nil
+	}
+
+	hashedPkce := sha256.Sum256([]byte(pkceCode))
+	codeChallenge := base64.RawURLEncoding.EncodeToString(hashedPkce[:])
+
+	if codeChallenge != val.Pkce {
 		return false, errors.New("pkce code was not the same")
 	}
 
