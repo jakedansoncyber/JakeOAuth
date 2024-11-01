@@ -3,12 +3,20 @@ package handlers
 import (
 	"JakeOAuth/auth"
 	"JakeOAuth/clients"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
+
+var clientsSlice map[string]clients.Client
+
+func init() {
+	clientsSlice = clients.ReadClients("clients/clients.json")
+}
 
 type AccessTokenResponse struct {
 	AccessToken   string `json:"access_token"`
@@ -31,34 +39,20 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 	}
 
 	formVals := req.Form
-	if !formVals.Has("grant_type") || !formVals.Has("code") {
+	if !formVals.Has("grant_type") {
 		w.WriteHeader(http.StatusUnauthorized)
 		log.Println("TokenEndpointHandler: grant_type, code, state or client_id missing")
 		w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
 		return
 	}
-	m := clients.ReadClients("clients/clients.json")
-	if formVals.Get("grant_type") == "client_credentials" {
 
-		if app, ok := m[formVals.Get("client_id")]; ok {
-			if !formVals.Has("client_secret") {
-				w.WriteHeader(http.StatusUnauthorized)
-				log.Println("TokenEndpointHandler: client_secret param was not included in request")
-				w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
-				return
-			}
+	grantType := formVals.Get("grant_type")
 
-			if app.ClientSecret != formVals.Get("client_secret") {
-				w.WriteHeader(http.StatusUnauthorized)
-				log.Println("unauthorized_client:The client credentials grant did not have the correct secret.")
-				return
-			}
-		}
-	}
-
-	if formVals.Get("grant_type") == "authorization_code" {
-		if !formVals.Has("code_verifier") {
-			fmt.Println("TokenEndpointHandler: code_verifier not included in request")
+	switch grantType {
+	case "authorization_code":
+		if !formVals.Has("code_verifier") || !formVals.Has("code") {
+			fmt.Println("TokenEndpointHandler: code or code_verifier not included in request")
+			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
 			return
 		}
@@ -71,14 +65,68 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 				return
 			}
 			fmt.Println("Auth code is invalid or Pkce code is invalid")
+			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
 			return
 		}
+	case "client_credentials":
+		var clientId string //:=formVals.Get("client_id")
+		var clientSecret string
+
+		if header := req.Header.Get("Authorization"); header != "" {
+			// try to decode basic header
+			if encoded, found := strings.CutPrefix(header, "Basic "); found {
+				decodedHeaderBytes, decodeErr := base64.RawURLEncoding.DecodeString(encoded)
+				fmt.Println(string(decodedHeaderBytes))
+				if decodeErr != nil {
+					fmt.Printf("TokenEndpointHandler: failed to get token from Authorization header")
+					w.WriteHeader(http.StatusUnauthorized)
+					w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
+					return
+				}
+				if clientId, clientSecret, found = strings.Cut(string(decodedHeaderBytes), ":"); !found {
+					fmt.Printf("TokenEndpointHandler: Basic token not sent in correct format clientId:clientSecret")
+					w.WriteHeader(http.StatusUnauthorized)
+					w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
+					return
+				}
+			}
+
+		} else {
+			if !formVals.Has("client_secret") {
+				w.WriteHeader(http.StatusUnauthorized)
+				log.Println("TokenEndpointHandler: client_secret param was not included in request")
+				w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
+				return
+			}
+			clientId = formVals.Get("client_id")
+			clientSecret = formVals.Get("client_secret")
+		}
+
+		if app, ok := clientsSlice[clientId]; ok {
+
+			if app.ClientSecret != clientSecret {
+				w.WriteHeader(http.StatusUnauthorized)
+				log.Println("unauthorized_client:The client credentials grant did not have the correct secret.")
+				return
+			}
+		} else {
+			w.WriteHeader(http.StatusUnauthorized)
+			log.Printf("TokenEndpointHandler: client id not matched or something went wrong %s\n", clientId)
+			w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
+			return
+		}
+	default:
+		fmt.Printf("TokenEndpointHandler: unsupported grant type %s\n", grantType)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
+
+		return
 	}
 
-	token, err := auth.CreateJWT()
+	token, createJwtErr := auth.CreateJWT()
 
-	if err != nil {
+	if createJwtErr != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		log.Println("error: TokenEndpointHandler failed to create jwt")
 		return
@@ -92,14 +140,28 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 		TodoParameter: "TODO",
 	}
 
-	bytes, err := json.Marshal(resp)
+	bytes, marshalErr := json.Marshal(resp)
 
-	if err != nil {
+	if marshalErr != nil {
 		fmt.Println("error: TokenEndpointHandler failed to marshal access token response")
 	}
 
-	w.Write(bytes)
 	w.WriteHeader(http.StatusOK)
+	w.Write(bytes)
 	return
+}
 
+//func clientCredentialsGrant(formVal url.Values, w http.ResponseWriter, req *http.Request) {
+//	if err := requiredFormVals(formVal, "client_secret"); err != nil {
+//		log.Println("error: clientCredentialsGrant failed to provide client_secret")
+//		writeWrapper(w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")))
+//		log.Println(err)
+//		return
+//	}
+//}
+
+func writeWrapper(_ int, err error) {
+	if err != nil {
+		log.Println("failed to write header correctly!")
+	}
 }

@@ -13,7 +13,7 @@ location, like GitHub.
 
 # TODO (not in order)
 
-- [ ] Implicit Grant
+- [x] Implicit Grant (not doing this since it's literally a less secure auth code grant flow)
 - [ ] Resource Owner Password Credentials Grant (maybe)
 - [ ] Client Credentials Grant
 - [ ] Extensions Grant (maybe)
