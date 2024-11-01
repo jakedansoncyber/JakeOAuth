@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -26,23 +27,23 @@ type AccessTokenResponse struct {
 	TodoParameter string `json:"todo_parameter"`
 }
 
-// TokenEndpointHandler used by the client to exchange an authorization
-// grant for an access token, typically with client authentication
+func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+	w.WriteHeader(statusCode)
+	w.Write([]byte(message))
+}
+
 func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	err := req.ParseForm()
 	if err != nil {
-		log.Println("error: AuthorizationEndpointHandler, failed to parse form")
-		w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
-		log.Println(err)
+		log.Println("error: AuthorizationEndpointHandler, failed to parse form:", err)
+		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
 		return
 	}
 
 	formVals := req.Form
 	if !formVals.Has("grant_type") {
-		w.WriteHeader(http.StatusUnauthorized)
-		log.Println("TokenEndpointHandler: grant_type, code, state or client_id missing")
-		w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
+		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The client is not authorized to request an authorization code using this method.")
 		return
 	}
 
@@ -50,118 +51,102 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 
 	switch grantType {
 	case "authorization_code":
-		if !formVals.Has("code_verifier") || !formVals.Has("code") {
-			fmt.Println("TokenEndpointHandler: code or code_verifier not included in request")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
-			return
-		}
-
-		if isValid, err := h.CodeStore.CheckTokenWithPkce(formVals.Get("code"), formVals.Get("code_verifier")); !isValid {
-			if err != nil {
-				fmt.Println("TokenEndpointHandler: error while checking token with pkce")
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
-				return
-			}
-			fmt.Println("Auth code is invalid or Pkce code is invalid")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
-			return
-		}
+		handleAuthorizationCodeGrant(h, formVals, w)
 	case "client_credentials":
-		var clientId string //:=formVals.Get("client_id")
-		var clientSecret string
-
-		if header := req.Header.Get("Authorization"); header != "" {
-			// try to decode basic header
-			if encoded, found := strings.CutPrefix(header, "Basic "); found {
-				decodedHeaderBytes, decodeErr := base64.StdEncoding.DecodeString(encoded)
-				fmt.Println(string(decodedHeaderBytes))
-				if decodeErr != nil {
-					fmt.Printf("TokenEndpointHandler: failed to get token from Authorization header")
-					w.WriteHeader(http.StatusUnauthorized)
-					w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
-					return
-				}
-				if clientId, clientSecret, found = strings.Cut(string(decodedHeaderBytes), ":"); !found {
-					fmt.Printf("TokenEndpointHandler: Basic token not sent in correct format clientId:clientSecret")
-					w.WriteHeader(http.StatusUnauthorized)
-					w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
-					return
-				}
-			}
-
-		} else {
-			if !formVals.Has("client_secret") {
-				w.WriteHeader(http.StatusUnauthorized)
-				log.Println("TokenEndpointHandler: client_secret param was not included in request")
-				w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
-				return
-			}
-			clientId = formVals.Get("client_id")
-			clientSecret = formVals.Get("client_secret")
-		}
-
-		if app, ok := clientsSlice[clientId]; ok {
-
-			if app.ClientSecret != clientSecret {
-				w.WriteHeader(http.StatusUnauthorized)
-				log.Println("unauthorized_client:The client credentials grant did not have the correct secret.")
-				return
-			}
-		} else {
-			w.WriteHeader(http.StatusUnauthorized)
-			log.Printf("TokenEndpointHandler: client id not matched or something went wrong %s\n", clientId)
-			w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
+		_, handleCcErr := handleClientCredentialsGrant(formVals, req, w)
+		if handleCcErr != nil {
+			log.Println("error handling client credentials grant:", err)
 			return
 		}
 	default:
-		fmt.Printf("TokenEndpointHandler: unsupported grant type %s\n", grantType)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request."))
-
+		writeErrorResponse(w, http.StatusBadRequest, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
 		return
 	}
 
 	token, createJwtErr := auth.CreateJWT()
-
 	if createJwtErr != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		log.Println("error: TokenEndpointHandler failed to create jwt")
+		log.Println("error: TokenEndpointHandler failed to create jwt:", createJwtErr)
+		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
 		return
 	}
 
 	resp := &AccessTokenResponse{
 		AccessToken:   token.Raw,
-		TokenType:     "Bearer", // TODO make this dynamic
+		TokenType:     "Bearer",
 		ExpiresIn:     time.Now().Add(auth.CodeExpiration).Unix(),
 		RefreshToken:  "TODO",
 		TodoParameter: "TODO",
 	}
 
 	bytes, marshalErr := json.Marshal(resp)
-
 	if marshalErr != nil {
-		fmt.Println("error: TokenEndpointHandler failed to marshal access token response")
+		log.Println("error: TokenEndpointHandler failed to marshal access token response:", marshalErr)
+		writeErrorResponse(w, http.StatusInternalServerError, "internal_server_error:Failed to marshal access token response.")
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write(bytes)
-	return
 }
 
-//func clientCredentialsGrant(formVal url.Values, w http.ResponseWriter, req *http.Request) {
-//	if err := requiredFormVals(formVal, "client_secret"); err != nil {
-//		log.Println("error: clientCredentialsGrant failed to provide client_secret")
-//		writeWrapper(w.Write([]byte("unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")))
-//		log.Println(err)
-//		return
-//	}
-//}
-
-func writeWrapper(_ int, err error) {
-	if err != nil {
-		log.Println("failed to write header correctly!")
+func decodeBasicAuth(header string) (string, string, error) {
+	if encoded, found := strings.CutPrefix(header, "Basic "); found {
+		decodedHeaderBytes, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to decode basic auth header: %w", err)
+		}
+		clientId, clientSecret, found := strings.Cut(string(decodedHeaderBytes), ":")
+		if !found {
+			return "", "", fmt.Errorf("basic token not in correct format clientId:clientSecret")
+		}
+		return clientId, clientSecret, nil
 	}
+	return "", "", fmt.Errorf("authorization header not found")
+}
+
+func handleAuthorizationCodeGrant(h *AuthHandler, formVals url.Values, w http.ResponseWriter) {
+	if !formVals.Has("code_verifier") || !formVals.Has("code") {
+		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
+		return
+	}
+
+	if isValid, err := h.CodeStore.CheckTokenWithPkce(formVals.Get("code"), formVals.Get("code_verifier")); !isValid {
+		if err != nil {
+			log.Println("error while checking token with pkce:", err)
+		}
+		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
+		return
+	}
+}
+
+func handleClientCredentialsGrant(formVals url.Values, req *http.Request, w http.ResponseWriter) (string, error) {
+	var clientId, clientSecret string
+
+	if header := req.Header.Get("Authorization"); header != "" {
+		var err error
+		clientId, clientSecret, err = decodeBasicAuth(header)
+		if err != nil {
+			writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
+			return "", err
+		}
+	} else {
+		if !formVals.Has("client_secret") {
+			writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The client is not authorized to request an authorization code using this method.")
+			return "", fmt.Errorf("client_secret param was not included in request")
+		}
+		clientId = formVals.Get("client_id")
+		clientSecret = formVals.Get("client_secret")
+	}
+
+	if app, ok := clientsSlice[clientId]; ok {
+		if app.ClientSecret != clientSecret {
+			writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The client credentials grant did not have the correct secret.")
+			return "", fmt.Errorf("client credentials grant did not have the correct secret")
+		}
+	} else {
+		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The client is not authorized to request an authorization code using this method.")
+		return "", fmt.Errorf("client id not matched or something went wrong %s", clientId)
+	}
+
+	return clientId, nil
 }
