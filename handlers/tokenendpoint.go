@@ -76,7 +76,7 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 		if header := req.Header.Get("Authorization"); header != "" {
 			// try to decode basic header
 			if encoded, found := strings.CutPrefix(header, "Basic "); found {
-				decodedHeaderBytes, decodeErr := base64.RawURLEncoding.DecodeString(encoded)
+				decodedHeaderBytes, decodeErr := base64.StdEncoding.DecodeString(encoded)
 				fmt.Println(string(decodedHeaderBytes))
 				if decodeErr != nil {
 					fmt.Printf("TokenEndpointHandler: failed to get token from Authorization header")
