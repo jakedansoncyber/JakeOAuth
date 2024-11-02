@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -29,11 +30,19 @@ type AccessTokenResponse struct {
 
 func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 	w.WriteHeader(statusCode)
-	w.Write([]byte(message))
+	_, err := w.Write([]byte(message))
+	if err != nil {
+		fmt.Println("Error writing response:", err)
+	}
 }
 
 func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Request) {
-	defer req.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Println("TokenEndpointHandler: failed to close body")
+		}
+	}(req.Body)
 	err := req.ParseForm()
 	if err != nil {
 		log.Println("error: AuthorizationEndpointHandler, failed to parse form:", err)
@@ -53,7 +62,7 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 	case "authorization_code":
 		handleAuthorizationCodeGrant(h, formVals, w)
 	case "client_credentials":
-		_, handleCcErr := handleClientCredentialsGrant(formVals, req, w)
+		handleCcErr := handleClientCredentialsGrant(formVals, req, w)
 		if handleCcErr != nil {
 			log.Println("error handling client credentials grant:", err)
 			return
@@ -86,16 +95,20 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write(bytes)
+	_, err = w.Write(bytes)
+
+	if err != nil {
+		fmt.Println("TokenEndpointHandler: error writing response:", err)
+	}
 }
 
-func decodeBasicAuth(header string) (string, string, error) {
+func decodeBasicAuth(header string) (clientId string, clientSecret string, err error) {
 	if encoded, found := strings.CutPrefix(header, "Basic "); found {
-		decodedHeaderBytes, err := base64.StdEncoding.DecodeString(encoded)
-		if err != nil {
+		decodedHeaderBytes, decodeErr := base64.StdEncoding.DecodeString(encoded)
+		if decodeErr != nil {
 			return "", "", fmt.Errorf("failed to decode basic auth header: %w", err)
 		}
-		clientId, clientSecret, found := strings.Cut(string(decodedHeaderBytes), ":")
+		clientId, clientSecret, found = strings.Cut(string(decodedHeaderBytes), ":")
 		if !found {
 			return "", "", fmt.Errorf("basic token not in correct format clientId:clientSecret")
 		}
@@ -119,7 +132,7 @@ func handleAuthorizationCodeGrant(h *AuthHandler, formVals url.Values, w http.Re
 	}
 }
 
-func handleClientCredentialsGrant(formVals url.Values, req *http.Request, w http.ResponseWriter) (string, error) {
+func handleClientCredentialsGrant(formVals url.Values, req *http.Request, w http.ResponseWriter) error {
 	var clientId, clientSecret string
 
 	if header := req.Header.Get("Authorization"); header != "" {
@@ -127,12 +140,12 @@ func handleClientCredentialsGrant(formVals url.Values, req *http.Request, w http
 		clientId, clientSecret, err = decodeBasicAuth(header)
 		if err != nil {
 			writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
-			return "", err
+			return err
 		}
 	} else {
 		if !formVals.Has("client_secret") {
 			writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The client is not authorized to request an authorization code using this method.")
-			return "", fmt.Errorf("client_secret param was not included in request")
+			return fmt.Errorf("client_secret param was not included in request")
 		}
 		clientId = formVals.Get("client_id")
 		clientSecret = formVals.Get("client_secret")
@@ -141,12 +154,12 @@ func handleClientCredentialsGrant(formVals url.Values, req *http.Request, w http
 	if app, ok := clientsSlice[clientId]; ok {
 		if app.ClientSecret != clientSecret {
 			writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The client credentials grant did not have the correct secret.")
-			return "", fmt.Errorf("client credentials grant did not have the correct secret")
+			return fmt.Errorf("client credentials grant did not have the correct secret")
 		}
 	} else {
 		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The client is not authorized to request an authorization code using this method.")
-		return "", fmt.Errorf("client id not matched or something went wrong %s", clientId)
+		return fmt.Errorf("client id not matched or something went wrong %s", clientId)
 	}
 
-	return clientId, nil
+	return nil
 }
