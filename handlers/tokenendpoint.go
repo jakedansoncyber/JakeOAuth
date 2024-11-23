@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"io"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 )
 
+// TODO: make this not static...in a database or something
 var clientsSlice map[string]clients.Client
 
 func init() {
@@ -72,7 +74,7 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	token, createJwtErr := auth.CreateJWT()
+	token, createJwtErr := auth.CreateJWT(jwt.SigningMethodRS256, "")
 	if createJwtErr != nil {
 		log.Println("error: TokenEndpointHandler failed to create jwt:", createJwtErr)
 		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")

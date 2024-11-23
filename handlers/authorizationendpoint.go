@@ -14,6 +14,13 @@ import (
 // Used by authorization code and implicit grant types.
 func (h *AuthHandler) AuthorizationEndpointHandler(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
+
+	isValid := HandleLogin(w, req)
+
+	if !isValid {
+		log.Fatal("What just happened it should have never gotten here huh")
+	}
+
 	err := req.ParseForm()
 	if err != nil {
 		log.Println("error: AuthorizationEndpointHandler, failed to parse form")
@@ -23,22 +30,6 @@ func (h *AuthHandler) AuthorizationEndpointHandler(w http.ResponseWriter, req *h
 	}
 
 	formVals := req.Form
-
-	if !formVals.Has("username") || !formVals.Has("password") {
-		w.WriteHeader(http.StatusUnauthorized)
-		log.Println("username and password not present")
-		w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
-		return
-	}
-
-	// really should use something like saml to authenticate here. but that's another day for another dollar
-	err = authenticateAuthCodeFlow(formVals.Get("username"), formVals.Get("password"))
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
-		log.Print(err)
-		return
-	}
 
 	state := ""
 	if formVals.Has("state") {
@@ -59,25 +50,7 @@ func (h *AuthHandler) AuthorizationEndpointHandler(w http.ResponseWriter, req *h
 	return
 }
 
-func authenticateAuthCodeFlow(username, password string) error {
-	log.Printf("username: %s, password: %s", username, password)
-	if username != "jake" && password != "josh" {
-		return errors.New("failed to authenticate")
-	}
-	return nil
-}
-
 func (h *AuthHandler) authCodeGrantRequirementsFlow(formVals url.Values, w http.ResponseWriter, req *http.Request, state string) {
-
-	// really should use something like saml to authenticate here. but that's another day for another dollar
-	err := authenticateAuthCodeFlow(formVals.Get("username"), formVals.Get("password"))
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("unauthorized_client:The client is not authorized to request an authorization code using this method."))
-		log.Print(err)
-		return
-	}
-
 	// need to implement scopes, and state. probably no redirect uri, that seems weird
 	if !formVals.Has("response_type") && !formVals.Has("client_id") && !formVals.Has("code_challenge") {
 		w.WriteHeader(http.StatusBadRequest)
