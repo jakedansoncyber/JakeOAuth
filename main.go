@@ -17,7 +17,7 @@ func (h *JakeHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 type LoggingMiddleware struct{}
 
-func (lm *LoggingMiddleware) log(_ http.ResponseWriter, req *http.Request) {
+func (lm *LoggingMiddleware) log(w http.ResponseWriter, req *http.Request) {
 	log.Printf("Starting request for: %v\n", req.URL.Path)
 
 	// Read the body
@@ -60,10 +60,20 @@ type GetHandler struct {
 }
 
 func (gh *GetHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	// Handle preflight (OPTIONS) request
+	if req.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if req.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+
 	gh.Middleware.log(w, req)
 	gh.Handler(w, req)
 	return
@@ -77,6 +87,16 @@ func main() {
 		Middleware: LoggingMiddleware{},
 	}
 
+	initialRedirectHandler := &GetHandler{
+		Handler:    handlers.HandleInitRedirect,
+		Middleware: LoggingMiddleware{},
+	}
+
+	loginEndpointHandler := &GetHandler{
+		Handler:    handlers.HandleLogin,
+		Middleware: LoggingMiddleware{},
+	}
+
 	tokenEndpointHandler := &PostHandler{
 		Handler:    h.TokenEndpointHandler,
 		Middleware: LoggingMiddleware{},
@@ -85,6 +105,8 @@ func main() {
 	hJ := JakeHandler{}
 	http.Handle("/authorizationendpoint", authHandler)
 	http.Handle("/tokenendpoint", tokenEndpointHandler)
+	http.Handle("/initRedirect", initialRedirectHandler)
+	http.Handle("/login", loginEndpointHandler)
 	http.Handle("/home", &hJ)
 	log.Println("Started on localhost:8080")
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))

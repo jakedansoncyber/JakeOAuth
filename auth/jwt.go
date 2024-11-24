@@ -11,11 +11,24 @@ var (
 	PathToPublicKey  = "keys/public.pub"
 )
 
-func CreateJWT() (token *jwt.Token, err error) {
+type Claims struct {
+	foo string
+	jwt.RegisteredClaims
+}
+
+func CreateJWT(method jwt.SigningMethod, scope ...string) (token *jwt.Token, err error) {
 	//TODO create JWT based off of client id
-
-	token = jwt.New(jwt.SigningMethodRS256)
-
+	token = jwt.NewWithClaims(jwt.SigningMethodRS256, Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "http://jakeoauth",
+			Subject:   "",
+			Audience:  jwt.ClaimStrings{},
+			ExpiresAt: nil,
+			NotBefore: nil,
+			IssuedAt:  nil,
+			ID:        "",
+		},
+	})
 	b, err := os.ReadFile(PathToPrivateKey)
 
 	if err != nil {
