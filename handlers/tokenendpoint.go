@@ -3,20 +3,22 @@ package handlers
 import (
 	"JakeOAuth/auth"
 	"JakeOAuth/clients"
-	"encoding/base64"
+	"JakeOAuth/util"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
 // TODO: make this not static...in a database or something
 var clientsSlice map[string]clients.Client
+var hasHeaderWritten = false
+var headerWrittenResponse = ""
 
 func init() {
 	clientsSlice = clients.ReadClients("clients/clients.json")
@@ -31,6 +33,8 @@ type AccessTokenResponse struct {
 }
 
 func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+	hasHeaderWritten = true
+	headerWrittenResponse = message
 	w.WriteHeader(statusCode)
 	_, err := w.Write([]byte(message))
 	if err != nil {
@@ -62,7 +66,12 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 
 	switch grantType {
 	case "authorization_code":
-		handleAuthorizationCodeGrant(h, formVals, w)
+		handleAuthCodeGrantErr := handleAuthorizationCodeGrant(h, formVals, w)
+		if handleAuthCodeGrantErr != nil {
+			log.Println("error handling authorization code grant")
+			return
+		}
+
 	case "client_credentials":
 		handleCcErr := handleClientCredentialsGrant(formVals, req, w)
 		if handleCcErr != nil {
@@ -96,33 +105,24 @@ func (h *AuthHandler) TokenEndpointHandler(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
+	if hasHeaderWritten {
+		log.Println("WARNING!!! HEADER HAS ALREADY BEEN WRITTEN!!!!")
+		log.Println(hasHeaderWritten)
+		log.Println(headerWrittenResponse)
+	}
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write(bytes)
 
 	if err != nil {
 		fmt.Println("TokenEndpointHandler: error writing response:", err)
 	}
+	return
 }
 
-func decodeBasicAuth(header string) (clientId string, clientSecret string, err error) {
-	if encoded, found := strings.CutPrefix(header, "Basic "); found {
-		decodedHeaderBytes, decodeErr := base64.StdEncoding.DecodeString(encoded)
-		if decodeErr != nil {
-			return "", "", fmt.Errorf("failed to decode basic auth header: %w", err)
-		}
-		clientId, clientSecret, found = strings.Cut(string(decodedHeaderBytes), ":")
-		if !found {
-			return "", "", fmt.Errorf("basic token not in correct format clientId:clientSecret")
-		}
-		return clientId, clientSecret, nil
-	}
-	return "", "", fmt.Errorf("authorization header not found")
-}
-
-func handleAuthorizationCodeGrant(h *AuthHandler, formVals url.Values, w http.ResponseWriter) {
+func handleAuthorizationCodeGrant(h *AuthHandler, formVals url.Values, w http.ResponseWriter) error {
 	if !formVals.Has("code_verifier") || !formVals.Has("code") {
-		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
-		return
+		writeErrorResponse(w, http.StatusUnauthorized, "code verifier or code does not exist in request")
+		return errors.New("code verifier or code does not exist in request")
 	}
 
 	if isValid, err := h.CodeStore.CheckTokenWithPkce(formVals.Get("code"), formVals.Get("code_verifier")); !isValid {
@@ -130,8 +130,9 @@ func handleAuthorizationCodeGrant(h *AuthHandler, formVals url.Values, w http.Re
 			log.Println("error while checking token with pkce:", err)
 		}
 		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
-		return
+		return errors.New("code and code verifier do not match")
 	}
+	return nil
 }
 
 func handleClientCredentialsGrant(formVals url.Values, req *http.Request, w http.ResponseWriter) error {
@@ -139,7 +140,7 @@ func handleClientCredentialsGrant(formVals url.Values, req *http.Request, w http
 
 	if header := req.Header.Get("Authorization"); header != "" {
 		var err error
-		clientId, clientSecret, err = decodeBasicAuth(header)
+		clientId, clientSecret, err = util.DecodeBasicAuth(header)
 		if err != nil {
 			writeErrorResponse(w, http.StatusUnauthorized, "unauthorized_client:The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
 			return err

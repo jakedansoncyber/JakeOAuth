@@ -159,7 +159,7 @@ func (acs *AuthorizationCodeStore) CheckTokenWithPkce(authCode, pkceCode string)
 
 	if val.HashMethod != "S256" {
 		if val.Pkce != pkceCode && val.Pkce != "" {
-			return false, errors.New("pkce code was not the same")
+			return false, errors.New("pkce code was not the same as what is in the database")
 		}
 		return true, nil
 	}
@@ -168,7 +168,7 @@ func (acs *AuthorizationCodeStore) CheckTokenWithPkce(authCode, pkceCode string)
 	codeChallenge := base64.RawURLEncoding.EncodeToString(hashedPkce[:])
 
 	if codeChallenge != val.Pkce {
-		return false, errors.New("pkce code was not the same")
+		return false, errors.New("pkce challenge was not the same as pkce verifier after hash")
 	}
 
 	return true, nil
