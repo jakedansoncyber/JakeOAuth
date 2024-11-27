@@ -43,7 +43,9 @@ func HandleLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	username, password, err := util.DecodeBase64(encodedStr)
+	// had to get off, see if this still works
+	username, password, err := util.DecodeBasicAuth(encodedStr)
+	//username, password, err := util.DecodeBase64(encodedStr)
 
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
